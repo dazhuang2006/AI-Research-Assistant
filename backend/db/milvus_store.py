@@ -9,7 +9,7 @@ from typing import Dict, List, Optional, Tuple
 
 from pymilvus import DataType, MilvusClient
 
-import config
+from backend import config
 
 
 def _escape_milvus(value: str) -> str:

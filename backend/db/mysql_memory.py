@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 
 import pymysql
 
-import config
+from backend import config
 
 
 class MySQLConversationMemory:

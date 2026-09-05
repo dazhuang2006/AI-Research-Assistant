@@ -2,11 +2,13 @@
 统一配置模块：从 .env 文件读取 OpenAI、MySQL、Milvus 相关配置
 """
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 
-# 加载 .env 环境变量文件
-load_dotenv()
+# 始终加载 backend 目录下的 .env，与当前工作目录无关
+BACKEND_DIR = Path(__file__).resolve().parent
+load_dotenv(BACKEND_DIR / ".env")
 
 # OpenAI
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")

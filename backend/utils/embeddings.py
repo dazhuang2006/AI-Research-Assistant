@@ -7,7 +7,7 @@ from typing import List, Optional
 
 from openai import OpenAI
 
-import config
+from backend import config
 
 
 # 全局 OpenAI 客户端
