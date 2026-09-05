@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 环境与密钥
+.env
+.env.local
+
+# 运行时文件
+backend/logs/
+*.db
+backend/db/documents/
+
+# IDE / 系统
+.idea/
+.vscode/
+.DS_Store
