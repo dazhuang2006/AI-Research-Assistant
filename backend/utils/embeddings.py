@@ -10,8 +10,11 @@ from openai import OpenAI
 from backend import config
 
 
-# 全局 OpenAI 客户端
-client = OpenAI(api_key=config.OPENAI_API_KEY)
+# 嵌入服务客户端（OpenAI 兼容，指向硅基流动）
+client = OpenAI(
+    api_key=config.EMBEDDING_API_KEY,
+    base_url=config.EMBEDDING_BASE_URL,
+)
 
 
 def get_embedding(

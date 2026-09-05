@@ -13,7 +13,10 @@ from backend import config
 class SummarizerAgent:
     def __init__(self):
         self.name = "Summarizer Agent"
-        self.client = OpenAI(api_key=config.OPENAI_API_KEY)
+        self.client = OpenAI(
+            api_key=config.LLM_API_KEY,
+            base_url=config.LLM_BASE_URL,
+        )
 
     def summarize(
         self,

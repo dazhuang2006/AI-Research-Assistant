@@ -10,10 +10,15 @@ from dotenv import load_dotenv
 BACKEND_DIR = Path(__file__).resolve().parent
 load_dotenv(BACKEND_DIR / ".env")
 
-# OpenAI
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
+# 嵌入服务（硅基流动，OpenAI 兼容接口）
+EMBEDDING_API_KEY = os.getenv("EMBEDDING_API_KEY", "")
+EMBEDDING_BASE_URL = os.getenv("EMBEDDING_BASE_URL", "https://api.siliconflow.cn/v1")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
+
+# 对话服务（DeepSeek 官方 API）
+LLM_API_KEY = os.getenv("LLM_API_KEY", "")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.deepseek.com")
+LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-v4-flash")
 
 # MySQL 会话记忆
 MYSQL_HOST = os.getenv("MYSQL_HOST", "127.0.0.1")
@@ -26,4 +31,4 @@ MYSQL_DATABASE = os.getenv("MYSQL_DATABASE", "research_assistant")
 MILVUS_URI = os.getenv("MILVUS_URI", "http://127.0.0.1:19530")
 MILVUS_CHUNK_COLLECTION = os.getenv("MILVUS_CHUNK_COLLECTION", "document_chunks")
 MILVUS_DOC_COLLECTION = os.getenv("MILVUS_DOC_COLLECTION", "document_meta")
-VECTOR_DIM = int(os.getenv("VECTOR_DIM", "1536"))
+VECTOR_DIM = int(os.getenv("VECTOR_DIM", "1024"))
