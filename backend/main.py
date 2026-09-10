@@ -7,10 +7,12 @@ AI Research Assistant 后端入口
 import os
 import tempfile
 import uuid
+from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from backend import config
 from backend.agents.orchestrator import Orchestrator
@@ -31,6 +33,7 @@ from backend.utils.document_parser import (
 from backend.utils.embeddings import get_embeddings
 
 app = FastAPI(title="AI Research Assistant")
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 # 本地开发允许跨域
 app.add_middleware(
@@ -313,3 +316,16 @@ def get_stats():
         "conversations": conversation_memory.get_stats(),
         "documents": vector_store.get_stats(),
     }
+
+
+@app.get("/", include_in_schema=False)
+def frontend_redirect():
+    """将根路径重定向到前端工作台"""
+    return RedirectResponse(url="/app/")
+
+
+app.mount(
+    "/app",
+    StaticFiles(directory=str(FRONTEND_DIR), html=True),
+    name="frontend",
+)

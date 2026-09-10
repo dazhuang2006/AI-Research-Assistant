@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="AI Research Assistant 多文档研究问答工作台"
+    />
+    <title>AI Research Assistant</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script
+      defer
+      src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"
+    ></script>
+    <script defer src="./app.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <div class="mobile-overlay" id="mobileOverlay"></div>
+
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <div class="brand-mark" aria-hidden="true">
+            <i data-lucide="book-open-check"></i>
+          </div>
+          <div class="brand-copy">
+            <strong>Research Assistant</strong>
+            <span>知识研究工作台</span>
+          </div>
+          <button
+            class="icon-button sidebar-close"
+            id="sidebarClose"
+            type="button"
+            aria-label="关闭侧边栏"
+            title="关闭侧边栏"
+          >
+            <i data-lucide="x"></i>
+          </button>
+        </div>
+
+        <button class="new-chat-button" id="newChatButton" type="button">
+          <i data-lucide="square-pen"></i>
+          <span>新建对话</span>
+          <kbd>N</kbd>
+        </button>
+
+        <section class="sidebar-section">
+          <div class="section-heading">
+            <div>
+              <span class="section-kicker">知识库</span>
+              <h2>上传文档</h2>
+            </div>
+            <span class="soft-badge" id="uploadLimit">50 MB</span>
+          </div>
+
+          <button class="upload-zone" id="dropZone" type="button">
+            <span class="upload-icon">
+              <i data-lucide="cloud-upload"></i>
+            </span>
+            <strong>选择或拖入文件</strong>
+            <small>PDF、DOCX、HTML、TXT</small>
+          </button>
+          <input
+            id="uploadInput"
+            type="file"
+            accept=".pdf,.docx,.html,.htm,.txt"
+            hidden
+          />
+
+          <div class="upload-progress" id="uploadProgress" hidden>
+            <div class="upload-progress-copy">
+              <span id="uploadStatus">正在处理文档</span>
+              <span id="uploadPercent">0%</span>
+            </div>
+            <div class="progress-track">
+              <span id="uploadProgressBar"></span>
+            </div>
+          </div>
+        </section>
+
+        <section class="sidebar-section document-section">
+          <div class="section-heading">
+            <div>
+              <span class="section-kicker">资料</span>
+              <h2>文档列表</h2>
+            </div>
+            <span class="count-badge" id="docCount">0</span>
+          </div>
+
+          <div class="document-toolbar">
+            <button class="text-button" id="selectAllDocs" type="button">
+              <i data-lucide="check-check"></i>
+              <span>全选</span>
+            </button>
+            <button
+              class="text-button danger-text"
+              id="deleteSelectedDocs"
+              type="button"
+            >
+              <i data-lucide="trash-2"></i>
+              <span>删除</span>
+            </button>
+          </div>
+
+          <div class="document-list" id="documentList">
+            <div class="empty-list">
+              <i data-lucide="files"></i>
+              <span>还没有上传文档</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="sidebar-section session-section">
+          <div class="section-heading">
+            <div>
+              <span class="section-kicker">历史</span>
+              <h2>最近会话</h2>
+            </div>
+            <button
+              class="icon-button compact"
+              id="refreshSessions"
+              type="button"
+              aria-label="刷新会话"
+              title="刷新会话"
+            >
+              <i data-lucide="refresh-cw"></i>
+            </button>
+          </div>
+          <div class="session-list" id="sessionList"></div>
+        </section>
+
+        <footer class="sidebar-footer">
+          <button class="health-panel" id="healthButton" type="button">
+            <span class="health-dot" id="healthDot"></span>
+            <span>
+              <strong id="healthText">检查服务状态</strong>
+              <small id="healthDetails">正在连接后端</small>
+            </span>
+            <i data-lucide="chevron-right"></i>
+          </button>
+        </footer>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div class="topbar-left">
+            <button
+              class="icon-button mobile-menu"
+              id="mobileMenuButton"
+              type="button"
+              aria-label="打开侧边栏"
+              title="打开侧边栏"
+            >
+              <i data-lucide="menu"></i>
+            </button>
+            <div>
+              <span class="topbar-eyebrow">当前工作区</span>
+              <h1>知识问答</h1>
+            </div>
+          </div>
+
+          <div class="topbar-actions">
+            <button class="ghost-button" id="refreshAll" type="button">
+              <i data-lucide="refresh-cw"></i>
+              <span>刷新</span>
+            </button>
+            <button class="primary-button" id="topNewChat" type="button">
+              <i data-lucide="plus"></i>
+              <span>新对话</span>
+            </button>
+          </div>
+        </header>
+
+        <section class="chat-area" id="chatArea">
+          <div class="empty-state" id="emptyState">
+            <div class="empty-visual" aria-hidden="true">
+              <div class="visual-sheet sheet-back">
+                <i data-lucide="file-text"></i>
+              </div>
+              <div class="visual-sheet sheet-front">
+                <span class="visual-dot mint"></span>
+                <span class="visual-line wide"></span>
+                <span class="visual-line"></span>
+                <span class="visual-line short"></span>
+              </div>
+              <div class="visual-search">
+                <i data-lucide="search"></i>
+              </div>
+            </div>
+
+            <span class="eyebrow-badge">
+              <i data-lucide="sparkles"></i>
+              多智能体文档问答
+            </span>
+            <h2>把资料变成可以追问的知识</h2>
+            <p>
+              选择文档后直接提问，系统会检索原文、生成初稿、检查缺口，并在需要时自动润色。
+            </p>
+
+            <div class="suggestion-grid">
+              <button
+                class="suggestion-card sky"
+                type="button"
+                data-question="这些文档的核心内容是什么？"
+              >
+                <i data-lucide="scan-text"></i>
+                <span>
+                  <strong>快速提炼</strong>
+                  <small>这些文档的核心内容是什么？</small>
+                </span>
+              </button>
+              <button
+                class="suggestion-card lavender"
+                type="button"
+                data-question="项目使用了哪些核心技术？"
+              >
+                <i data-lucide="network"></i>
+                <span>
+                  <strong>技术梳理</strong>
+                  <small>项目使用了哪些核心技术？</small>
+                </span>
+              </button>
+              <button
+                class="suggestion-card mint"
+                type="button"
+                data-question="请比较不同文档中的关键观点。"
+              >
+                <i data-lucide="columns-2"></i>
+                <span>
+                  <strong>跨文档比较</strong>
+                  <small>请比较不同文档中的关键观点。</small>
+                </span>
+              </button>
+            </div>
+          </div>
+
+          <div class="message-list" id="messageList"></div>
+        </section>
+
+        <section class="composer-region">
+          <div class="selection-strip" id="selectionStrip">
+            <span class="selection-icon">
+              <i data-lucide="library-big"></i>
+            </span>
+            <span id="selectionText">未选择文档时搜索全部资料</span>
+            <button class="inline-button" id="clearSelection" type="button">
+              清除选择
+            </button>
+          </div>
+
+          <form class="composer" id="askForm">
+            <textarea
+              id="queryInput"
+              rows="1"
+              maxlength="4000"
+              placeholder="向你的文档提问..."
+              aria-label="输入问题"
+            ></textarea>
+            <div class="composer-footer">
+              <div class="composer-meta">
+                <label class="topk-control">
+                  <i data-lucide="search"></i>
+                  <span>检索</span>
+                  <select id="topKSelect" aria-label="检索分块数量">
+                    <option value="3">3 条</option>
+                    <option value="5" selected>5 条</option>
+                    <option value="8">8 条</option>
+                    <option value="10">10 条</option>
+                  </select>
+                </label>
+                <span class="char-count" id="charCount">0 / 4000</span>
+              </div>
+              <button class="send-button" id="sendButton" type="submit">
+                <i data-lucide="arrow-up"></i>
+                <span>发送</span>
+              </button>
+            </div>
+          </form>
+          <p class="composer-note">
+            回答仅基于所选文档。按 Enter 发送，Shift + Enter 换行。
+          </p>
+        </section>
+      </main>
+
+      <aside class="context-panel">
+        <section class="context-card">
+          <div class="context-heading">
+            <span class="context-icon lavender">
+              <i data-lucide="bot"></i>
+            </span>
+            <div>
+              <span class="section-kicker">智能体</span>
+              <h2>工作流状态</h2>
+            </div>
+          </div>
+          <div class="workflow-trace" id="workflowTrace">
+            <div class="trace-step" data-step="research">
+              <span><i data-lucide="search-check"></i></span>
+              <div>
+                <strong>Research</strong>
+                <small>检索相关文档片段</small>
+              </div>
+            </div>
+            <div class="trace-step" data-step="summarize">
+              <span><i data-lucide="file-pen-line"></i></span>
+              <div>
+                <strong>Summarizer</strong>
+                <small>生成初稿回答</small>
+              </div>
+            </div>
+            <div class="trace-step" data-step="critique">
+              <span><i data-lucide="badge-check"></i></span>
+              <div>
+                <strong>Critic</strong>
+                <small>检查信息缺口</small>
+              </div>
+            </div>
+            <div class="trace-step" data-step="edit">
+              <span><i data-lucide="wand-sparkles"></i></span>
+              <div>
+                <strong>Editor</strong>
+                <small>按需润色最终答案</small>
+              </div>
+            </div>
+          </div>
+          <p class="workflow-state" id="workflowState">等待提问</p>
+        </section>
+
+        <section class="context-card">
+          <div class="context-heading">
+            <span class="context-icon mint">
+              <i data-lucide="link-2"></i>
+            </span>
+            <div>
+              <span class="section-kicker">本次回答</span>
+              <h2>引用来源</h2>
+            </div>
+          </div>
+          <div class="source-list" id="sourceList">
+            <p class="muted-copy">提出问题后，这里会显示引用来源。</p>
+          </div>
+        </section>
+
+        <section class="context-card">
+          <div class="context-heading">
+            <span class="context-icon peach">
+              <i data-lucide="chart-no-axes-column-increasing"></i>
+            </span>
+            <div>
+              <span class="section-kicker">知识库</span>
+              <h2>运行概览</h2>
+            </div>
+          </div>
+          <dl class="stats-grid">
+            <div>
+              <dt>文档</dt>
+              <dd id="statDocuments">0</dd>
+            </div>
+            <div>
+              <dt>向量</dt>
+              <dd id="statVectors">0</dd>
+            </div>
+            <div>
+              <dt>会话</dt>
+              <dd id="statSessions">0</dd>
+            </div>
+          </dl>
+        </section>
+      </aside>
+    </div>
+
+    <div class="toast-region" id="toastRegion" aria-live="polite"></div>
+  </body>
+</html>
