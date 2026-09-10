@@ -6,10 +6,13 @@ AI Research Assistant 后端入口
 """
 import os
 import tempfile
+import uuid
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
+from backend import config
 from backend.agents.orchestrator import Orchestrator
 from backend.db.milvus_store import vector_store
 from backend.db.mysql_memory import conversation_memory
@@ -25,11 +28,11 @@ from backend.utils.document_parser import (
     chunk_text,
     extract_text_from_file,
 )
-from backend.utils.embeddings import get_embedding
+from backend.utils.embeddings import get_embeddings
 
 app = FastAPI(title="AI Research Assistant")
 
-# 本地开发允许跨域；上线前需要改成具体域名
+# 本地开发允许跨域
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -41,10 +44,81 @@ app.add_middleware(
 orchestrator = Orchestrator()
 
 
+def _format_dependency_error(exc: Exception) -> str:
+    """生成不包含完整敏感信息的依赖错误描述"""
+    message = str(exc).strip()
+    return f"{type(exc).__name__}: {message}" if message else type(exc).__name__
+
+
+async def _save_upload_to_temp(file: UploadFile, suffix: str) -> tuple[str, int]:
+    """流式保存上传文件，并限制最大文件大小"""
+    max_bytes = config.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    temp_path = temp_file.name
+    total_bytes = 0
+
+    try:
+        while True:
+            data = await file.read(1024 * 1024)
+            if not data:
+                break
+            total_bytes += len(data)
+            if total_bytes > max_bytes:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"文件大小不能超过 {config.MAX_UPLOAD_SIZE_MB} MB",
+                )
+            temp_file.write(data)
+    except Exception:
+        temp_file.close()
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+        raise
+    else:
+        temp_file.close()
+
+    return temp_path, total_bytes
+
+
 @app.get("/health")
 def health():
-    """健康检查"""
-    return {"status": "ok"}
+    """检查 API 配置及其依赖服务状态"""
+    missing_keys = [
+        key
+        for key, value in {
+            "EMBEDDING_API_KEY": config.EMBEDDING_API_KEY,
+            "LLM_API_KEY": config.LLM_API_KEY,
+        }.items()
+        if not value
+    ]
+    checks = {
+        "config": {
+            "status": "ok" if not missing_keys else "error",
+            "missing": missing_keys,
+        }
+    }
+
+    for name, checker in (
+        ("mysql", conversation_memory.ping),
+        ("milvus", vector_store.ping),
+    ):
+        try:
+            checker()
+            checks[name] = {"status": "ok"}
+        except Exception as exc:
+            checks[name] = {
+                "status": "error",
+                "detail": _format_dependency_error(exc),
+            }
+
+    is_healthy = all(check["status"] == "ok" for check in checks.values())
+    return JSONResponse(
+        status_code=200 if is_healthy else 503,
+        content={
+            "status": "ok" if is_healthy else "degraded",
+            "checks": checks,
+        },
+    )
 
 
 @app.get("/documents", response_model=dict)
@@ -71,7 +145,7 @@ async def upload_document(file: UploadFile = File(...)):
     2. 每个分块生成 OpenAI 嵌入向量
     3. 存入 Milvus
     """
-    filename = file.filename or "document"
+    filename = (file.filename or "document").replace("\\", "/").split("/")[-1]
     _, ext = os.path.splitext(filename)
     ext = ext.lower()
 
@@ -81,23 +155,27 @@ async def upload_document(file: UploadFile = File(...)):
             detail=f"不支持的文件格式: {ext}，支持 {SUPPORTED_EXTENSIONS}",
         )
 
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
-    temp_file.write(await file.read())
-    temp_file.close()
+    temp_path, _ = await _save_upload_to_temp(file, ext)
 
     try:
         # 提取文本并切片
-        text, file_type = extract_text_from_file(temp_file.name)
+        text, file_type = extract_text_from_file(temp_path)
         chunks = chunk_text(text)
         if not chunks:
             raise HTTPException(status_code=400, detail="未从文件中提取到有效文本")
+        if len(chunks) > config.MAX_DOCUMENT_CHUNKS:
+            raise HTTPException(
+                status_code=413,
+                detail=f"文档分块数量不能超过 {config.MAX_DOCUMENT_CHUNKS}",
+            )
 
         # 每个分块向量化
-        vectors = [get_embedding(chunk) for chunk in chunks]
+        vectors = get_embeddings(chunks)
 
         # 存入 Milvus
+        doc_id = str(uuid.uuid4())
         inserted = vector_store.save_document(
-            doc_id=filename,
+            doc_id=doc_id,
             original_filename=filename,
             file_type=file_type,
             chunks=chunks,
@@ -107,6 +185,7 @@ async def upload_document(file: UploadFile = File(...)):
 
         return UploadResponse(
             status="uploaded",
+            doc_id=doc_id,
             filename=filename,
             file_type=file_type,
             chunks=inserted,
@@ -116,8 +195,8 @@ async def upload_document(file: UploadFile = File(...)):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     finally:
-        if os.path.exists(temp_file.name):
-            os.unlink(temp_file.name)
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
 
 
 @app.post("/ask", response_model=dict)
@@ -138,9 +217,6 @@ def ask(req: AskRequest):
     elif not conversation_memory.session_exists(session_id):
         session_id = conversation_memory.create_session(session_id)
 
-    # 用户消息先写入历史
-    conversation_memory.add_message(session_id, "user", req.query)
-
     # 组装最近对话上下文
     context_history = conversation_memory.get_context(session_id, max_messages=10)
 
@@ -155,7 +231,8 @@ def ask(req: AskRequest):
     if result["status"] == "error":
         raise HTTPException(status_code=400, detail=result["answer"])
 
-    # 助手回答写入历史
+    # 成功后再写入本轮问答，避免失败请求污染会话历史
+    conversation_memory.add_message(session_id, "user", req.query)
     conversation_memory.add_message(
         session_id,
         "assistant",

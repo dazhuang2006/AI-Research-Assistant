@@ -5,6 +5,8 @@
 对外提供的方法名与原项目保持一致，方便上层调用。
 """
 import json
+import re
+import threading
 import uuid
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -23,6 +25,10 @@ class MySQLConversationMemory:
         self.user = config.MYSQL_USER
         self.password = config.MYSQL_PASSWORD
         self.database = config.MYSQL_DATABASE
+        self.connect_timeout = config.MYSQL_CONNECT_TIMEOUT
+
+        if not re.fullmatch(r"[A-Za-z0-9_]+", self.database):
+            raise ValueError("MYSQL_DATABASE 只能包含字母、数字和下划线")
 
         # 确保数据库和表存在
         self._ensure_database()
@@ -42,6 +48,7 @@ class MySQLConversationMemory:
             password=self.password,
             charset="utf8mb4",
             autocommit=True,
+            connect_timeout=self.connect_timeout,
         )
         with server.cursor() as cursor:
             cursor.execute(
@@ -61,6 +68,7 @@ class MySQLConversationMemory:
             charset="utf8mb4",
             cursorclass=pymysql.cursors.DictCursor,
             autocommit=True,
+            connect_timeout=self.connect_timeout,
         )
 
     def _init_tables(self):
@@ -366,6 +374,33 @@ class MySQLConversationMemory:
             "avg_messages_per_session": round(float(avg_messages), 2),
         }
 
+    def ping(self) -> bool:
+        """检查 MySQL 是否可访问"""
+        conn = self._connect()
+        try:
+            conn.ping(reconnect=False)
+        finally:
+            conn.close()
+        return True
+
+
+class LazyMySQLConversationMemory:
+    """延迟创建 MySQL 连接，避免外部服务不可用时阻塞应用启动"""
+
+    def __init__(self):
+        self._instance: Optional[MySQLConversationMemory] = None
+        self._lock = threading.Lock()
+
+    def _get_instance(self) -> MySQLConversationMemory:
+        if self._instance is None:
+            with self._lock:
+                if self._instance is None:
+                    self._instance = MySQLConversationMemory()
+        return self._instance
+
+    def __getattr__(self, name: str):
+        return getattr(self._get_instance(), name)
+
 
 # 全局单例：后续 FastAPI 统一使用这一个实例
-conversation_memory = MySQLConversationMemory()
+conversation_memory = LazyMySQLConversationMemory()

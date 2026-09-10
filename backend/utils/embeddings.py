@@ -31,9 +31,39 @@ def get_embedding(
     Returns:
         嵌入向量列表
     """
+    return get_embeddings([text], model=model)[0]
+
+
+def get_embeddings(
+    texts: List[str],
+    model: Optional[str] = None,
+    batch_size: Optional[int] = None,
+) -> List[List[float]]:
+    """
+    批量获取文本嵌入向量。
+
+    Args:
+        texts: 输入文本列表
+        model: 嵌入模型名称，默认取 config.EMBEDDING_MODEL
+        batch_size: 每批请求的文本数量
+
+    Returns:
+        与 texts 顺序一致的嵌入向量列表
+    """
+    if not texts:
+        return []
+
     model = model or config.EMBEDDING_MODEL
-    response = client.embeddings.create(
-        input=text,
-        model=model,
-    )
-    return response.data[0].embedding
+    batch_size = batch_size or config.EMBEDDING_BATCH_SIZE
+    vectors: List[List[float]] = []
+
+    for start in range(0, len(texts), batch_size):
+        batch = texts[start:start + batch_size]
+        response = client.embeddings.create(
+            input=batch,
+            model=model,
+        )
+        ordered = sorted(response.data, key=lambda item: item.index)
+        vectors.extend(item.embedding for item in ordered)
+
+    return vectors

@@ -5,6 +5,7 @@
 doc_id、原文件名、文件类型、上传时间等文档信息，便于列表查询与删除。
 """
 from datetime import datetime
+import threading
 from typing import Dict, List, Optional, Tuple
 
 from pymilvus import DataType, MilvusClient
@@ -32,17 +33,19 @@ class MilvusVectorStore:
         uri: Optional[str] = None,
         collection_name: Optional[str] = None,
         dim: Optional[int] = None,
+        timeout: Optional[float] = None,
     ):
         self.uri = uri or config.MILVUS_URI
         self.collection_name = collection_name or config.MILVUS_CHUNK_COLLECTION
         self.dim = dim or config.VECTOR_DIM
+        self.timeout = timeout or config.MILVUS_TIMEOUT
 
-        self.client = MilvusClient(uri=self.uri)
+        self.client = MilvusClient(uri=self.uri, timeout=self.timeout)
         self._ensure_collection()
 
     def _ensure_collection(self):
         """如果 Collection 不存在则按约定 Schema 创建"""
-        if self.client.has_collection(self.collection_name):
+        if self.client.has_collection(self.collection_name, timeout=self.timeout):
             return
 
         schema = self.client.create_schema(auto_id=True)
@@ -67,6 +70,7 @@ class MilvusVectorStore:
             collection_name=self.collection_name,
             schema=schema,
             index_params=index_params,
+            timeout=self.timeout,
         )
 
     @staticmethod
@@ -120,7 +124,11 @@ class MilvusVectorStore:
             for chunk, vector in zip(chunks, vectors)
         ]
 
-        self.client.insert(collection_name=self.collection_name, data=rows)
+        self.client.insert(
+            collection_name=self.collection_name,
+            data=rows,
+            timeout=self.timeout,
+        )
         return len(rows)
 
     def document_exists(self, doc_id: str) -> bool:
@@ -130,6 +138,7 @@ class MilvusVectorStore:
             filter=f'doc_id == "{_escape_milvus(doc_id)}"',
             output_fields=["doc_id"],
             limit=1,
+            timeout=self.timeout,
         )
         return bool(result)
 
@@ -138,6 +147,7 @@ class MilvusVectorStore:
         self.client.delete(
             collection_name=self.collection_name,
             filter=f'doc_id == "{_escape_milvus(doc_id)}"',
+            timeout=self.timeout,
         )
         return True
 
@@ -148,9 +158,11 @@ class MilvusVectorStore:
         Returns:
             文档信息字典列表（同一个 doc_id 只保留一条）
         """
-        rows = self.client.query(
+        iterator = self.client.query_iterator(
             collection_name=self.collection_name,
             filter="",
+            batch_size=1000,
+            limit=-1,
             output_fields=[
                 "doc_id",
                 "original_filename",
@@ -159,21 +171,28 @@ class MilvusVectorStore:
                 "characters",
                 "chunks",
             ],
-            limit=10000,
+            timeout=self.timeout,
         )
 
         documents = {}
-        for row in rows:
-            doc_id = row.get("doc_id")
-            if doc_id and doc_id not in documents:
-                documents[doc_id] = {
-                    "doc_id": doc_id,
-                    "original_filename": row.get("original_filename"),
-                    "file_type": row.get("file_type"),
-                    "upload_date": row.get("upload_date"),
-                    "characters": row.get("characters"),
-                    "chunks": row.get("chunks"),
-                }
+        try:
+            while True:
+                rows = iterator.next()
+                if not rows:
+                    break
+                for row in rows:
+                    doc_id = row.get("doc_id")
+                    if doc_id and doc_id not in documents:
+                        documents[doc_id] = {
+                            "doc_id": doc_id,
+                            "original_filename": row.get("original_filename"),
+                            "file_type": row.get("file_type"),
+                            "upload_date": row.get("upload_date"),
+                            "characters": row.get("characters"),
+                            "chunks": row.get("chunks"),
+                        }
+        finally:
+            iterator.close()
         return list(documents.values())
 
     def search_documents(
@@ -201,6 +220,7 @@ class MilvusVectorStore:
             filter=filter_expr,
             limit=top_k,
             output_fields=["doc_id", "original_filename", "text"],
+            timeout=self.timeout,
         )
 
         chunks = []
@@ -218,7 +238,10 @@ class MilvusVectorStore:
     def get_stats(self) -> Dict:
         """获取向量库整体统计信息"""
         documents = self.list_documents()
-        row_count = self.client.get_collection_stats(self.collection_name).get("row_count", 0)
+        row_count = self.client.get_collection_stats(
+            self.collection_name,
+            timeout=self.timeout,
+        ).get("row_count", 0)
         return {
             "total_documents": len(documents),
             "total_vectors": row_count,
@@ -226,6 +249,29 @@ class MilvusVectorStore:
             "documents": documents,
         }
 
+    def ping(self) -> bool:
+        """检查 Milvus 是否可访问"""
+        self.client.list_collections(timeout=self.timeout)
+        return True
+
+
+class LazyMilvusVectorStore:
+    """延迟创建 Milvus 客户端，避免外部服务不可用时阻塞应用启动"""
+
+    def __init__(self):
+        self._instance: Optional[MilvusVectorStore] = None
+        self._lock = threading.Lock()
+
+    def _get_instance(self) -> MilvusVectorStore:
+        if self._instance is None:
+            with self._lock:
+                if self._instance is None:
+                    self._instance = MilvusVectorStore()
+        return self._instance
+
+    def __getattr__(self, name: str):
+        return getattr(self._get_instance(), name)
+
 
 # 全局单例：后续 FastAPI 统一使用这一个实例
-vector_store = MilvusVectorStore()
+vector_store = LazyMilvusVectorStore()

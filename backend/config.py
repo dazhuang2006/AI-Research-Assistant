@@ -14,6 +14,7 @@ load_dotenv(BACKEND_DIR / ".env")
 EMBEDDING_API_KEY = os.getenv("EMBEDDING_API_KEY", "")
 EMBEDDING_BASE_URL = os.getenv("EMBEDDING_BASE_URL", "https://api.siliconflow.cn/v1")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
+EMBEDDING_BATCH_SIZE = int(os.getenv("EMBEDDING_BATCH_SIZE", "32"))
 
 # 对话服务（DeepSeek 官方 API）
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")
@@ -26,9 +27,18 @@ MYSQL_PORT = int(os.getenv("MYSQL_PORT", "3306"))
 MYSQL_USER = os.getenv("MYSQL_USER", "root")
 MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD", "")
 MYSQL_DATABASE = os.getenv("MYSQL_DATABASE", "research_assistant")
+MYSQL_CONNECT_TIMEOUT = int(os.getenv("MYSQL_CONNECT_TIMEOUT", "3"))
 
 # Milvus 向量库
 MILVUS_URI = os.getenv("MILVUS_URI", "http://127.0.0.1:19530")
 MILVUS_CHUNK_COLLECTION = os.getenv("MILVUS_CHUNK_COLLECTION", "document_chunks")
 MILVUS_DOC_COLLECTION = os.getenv("MILVUS_DOC_COLLECTION", "document_meta")
+MILVUS_TIMEOUT = float(os.getenv("MILVUS_TIMEOUT", "3"))
 VECTOR_DIM = int(os.getenv("VECTOR_DIM", "1024"))
+
+# API 输入与上传限制
+MAX_QUERY_LENGTH = int(os.getenv("MAX_QUERY_LENGTH", "4000"))
+MAX_TOP_K = int(os.getenv("MAX_TOP_K", "50"))
+MAX_DOC_IDS = int(os.getenv("MAX_DOC_IDS", "100"))
+MAX_UPLOAD_SIZE_MB = int(os.getenv("MAX_UPLOAD_SIZE_MB", "50"))
+MAX_DOCUMENT_CHUNKS = int(os.getenv("MAX_DOCUMENT_CHUNKS", "5000"))

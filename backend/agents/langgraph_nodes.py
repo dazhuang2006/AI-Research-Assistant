@@ -207,7 +207,33 @@ def skip_editor_node(state: AgentState) -> AgentState:
     }
 
 
-def should_edit(state: AgentState) -> str:
+def error_node(state: AgentState) -> AgentState:
+    """
+    错误终止节点：保留错误原因并结束工作流。
+    """
+    workflow_log = list(state.get("workflow_log", []))
+    error_message = state.get("error_message") or "工作流执行失败"
+    workflow_log.append(f"工作流终止 - {error_message}")
+
+    return {
+        **state,
+        "final_answer": error_message,
+        "workflow_log": workflow_log,
+        "status": "error",
+    }
+
+
+def route_after_research(state: AgentState) -> str:
+    """Research 失败时直接进入错误终止节点"""
+    return "error" if state.get("status") == "error" else "continue"
+
+
+def route_after_summarizer(state: AgentState) -> str:
+    """Summarizer 失败时直接进入错误终止节点"""
+    return "error" if state.get("status") == "error" else "continue"
+
+
+def route_after_critique(state: AgentState) -> str:
     """
     条件路由：决定是否进入 Editor
 
@@ -215,6 +241,8 @@ def should_edit(state: AgentState) -> str:
         state: 当前工作流状态
 
     Returns:
-        需要编辑返回 "edit"，否则返回 "skip_edit"
+        出错返回 "error"，需要编辑返回 "edit"，否则返回 "skip_edit"
     """
+    if state.get("status") == "error":
+        return "error"
     return "edit" if state.get("has_gaps", False) else "skip_edit"

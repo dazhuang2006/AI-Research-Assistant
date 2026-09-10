@@ -10,6 +10,23 @@ from bs4 import BeautifulSoup
 from docx import Document
 import pdfplumber
 
+TEXT_ENCODINGS = ("utf-8-sig", "gb18030", "big5")
+
+
+def _read_text_file(file_path: str) -> str:
+    """按常见中文编码依次尝试读取文本文件"""
+    with open(file_path, "rb") as f:
+        raw = f.read()
+
+    for encoding in TEXT_ENCODINGS:
+        try:
+            return raw.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+
+    # 最后保底，避免因为个别非法字节完全拒绝文档
+    return raw.decode("utf-8", errors="replace")
+
 
 def extract_text_from_pdf(file_path: str) -> str:
     """
@@ -21,11 +38,13 @@ def extract_text_from_pdf(file_path: str) -> str:
     Returns:
         提取出的文本内容
     """
-    text = ""
+    pages = []
     with pdfplumber.open(file_path) as pdf:
         for page in pdf.pages:
-            text += page.extract_text() or ""
-    return text
+            page_text = page.extract_text() or ""
+            if page_text.strip():
+                pages.append(page_text)
+    return "\n\n".join(pages)
 
 
 def extract_text_from_docx(file_path: str) -> str:
@@ -66,8 +85,7 @@ def extract_text_from_html(file_path: str) -> str:
     Returns:
         提取出的文本内容
     """
-    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-        html_content = f.read()
+    html_content = _read_text_file(file_path)
 
     soup = BeautifulSoup(html_content, "html.parser")
     for tag in soup(["script", "style", "meta", "link"]):
@@ -86,8 +104,7 @@ def extract_text_from_txt(file_path: str) -> str:
     Returns:
         文本内容
     """
-    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-        return f.read()
+    return _read_text_file(file_path)
 
 
 def extract_text_from_file(file_path: str) -> Tuple[str, str]:
@@ -142,6 +159,10 @@ def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]
     """
     if not text:
         return []
+    if chunk_size <= 0:
+        raise ValueError("chunk_size 必须大于 0")
+    if overlap < 0 or overlap >= chunk_size:
+        raise ValueError("overlap 必须大于等于 0 且小于 chunk_size")
 
     chunks = []
     start = 0
